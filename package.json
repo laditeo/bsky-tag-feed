@@ -1,0 +1,33 @@
+{
+  "name": "bsky-tag-feed",
+  "version": "1.0.0",
+  "description": "Bluesky firehose feed generator that filters posts by self-labels, keywords and hashtags",
+  "main": "dist/src/index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node dist/src/index.js",
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "publishFeed": "ts-node scripts/publishFeed.ts",
+    "unpublishFeed": "ts-node scripts/unpublishFeed.ts"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.13.28",
+    "@atproto/repo": "^0.3.2",
+    "@atproto/xrpc-server": "^0.7.9",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "kysely": "^0.27.4",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
