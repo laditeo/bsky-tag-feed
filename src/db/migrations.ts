@@ -1,4 +1,4 @@
-import { Kysely, Migration, MigrationProvider, Migrator } from 'kysely'
+import { Kysely, Migration, MigrationProvider, Migrator, sql } from 'kysely'
 import { DatabaseSchema } from './schema'
 
 const migrations: Record<string, Migration> = {}
@@ -27,12 +27,27 @@ migrations['001_init'] = {
       .createTable('sub_state')
       .ifNotExists()
       .addColumn('service', 'varchar', (col) => col.primaryKey())
-      .addColumn('cursor', 'integer', (col) => col.notNull())
+      // bigint: firehose sequence numbers exceed the 32-bit integer range.
+      .addColumn('cursor', 'bigint', (col) => col.notNull())
       .execute()
   },
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable('sub_state').ifExists().execute()
     await db.schema.dropTable('post').ifExists().execute()
+  },
+}
+
+// Widen sub_state.cursor to bigint for databases created before the type fix.
+migrations['002_cursor_bigint'] = {
+  async up(db: Kysely<unknown>) {
+    await sql`ALTER TABLE "sub_state" ALTER COLUMN "cursor" TYPE bigint`.execute(
+      db,
+    )
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`ALTER TABLE "sub_state" ALTER COLUMN "cursor" TYPE integer`.execute(
+      db,
+    )
   },
 }
 

@@ -156,7 +156,8 @@ export class FirehoseSubscription {
       .selectAll()
       .where('service', '=', this.cfg.subscriptionEndpoint)
       .executeTakeFirst()
-    return res ? { cursor: res.cursor } : {}
+    // pg returns bigint columns as strings; coerce back to a number.
+    return res ? { cursor: Number(res.cursor) } : {}
   }
 
   private async updateCursor(cursor: number) {
