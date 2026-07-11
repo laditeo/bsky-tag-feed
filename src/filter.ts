@@ -55,8 +55,14 @@ export const extractHashtags = (record: PostRecordLike): string[] => {
 /**
  * Decide whether a post matches the configured filters.
  *
- * A language gate (if configured) is always applied as a precondition. Then
- * each active category (self-labels, hashtags, keywords) is evaluated:
+ * A language gate (if configured) is always applied as a precondition.
+ *
+ * Strong tags are "self-sufficient": their mere presence means drawn + adult
+ * (e.g. hentai, rule34, yiff), so they match on their own regardless of
+ * matchMode and without requiring a self-label.
+ *
+ * The remaining categories (self-labels, general hashtags, keywords) are then
+ * evaluated together:
  *  - matchMode "any": keep the post if it hits at least one active category
  *  - matchMode "all": keep the post only if it hits every active category
  */
@@ -74,6 +80,15 @@ export const matchPost = (
     }
   }
 
+  const tags = extractHashtags(record)
+
+  // Self-sufficient drawn-adult tags: match on their own.
+  const strongReasons: string[] = []
+  if (cfg.strongTags.length > 0) {
+    const strongHits = tags.filter((t) => cfg.strongTags.includes(t))
+    strongReasons.push(...strongHits.map((t) => `strong:${t}`))
+  }
+
   const reasons: string[] = []
   const categoryHits: boolean[] = []
 
@@ -86,7 +101,7 @@ export const matchPost = (
   }
 
   if (cfg.hashtags.length > 0) {
-    const found = extractHashtags(record).filter((t) => cfg.hashtags.includes(t))
+    const found = tags.filter((t) => cfg.hashtags.includes(t))
     categoryHits.push(found.length > 0)
     reasons.push(...found.map((t) => `tag:${t}`))
   }
@@ -98,15 +113,17 @@ export const matchPost = (
     reasons.push(...found.map((k) => `kw:${k}`))
   }
 
-  // No active categories -> nothing can match.
-  if (categoryHits.length === 0) {
-    return { matched: false, reasons: [] }
-  }
+  const baseMatched =
+    categoryHits.length === 0
+      ? false
+      : cfg.matchMode === 'all'
+        ? categoryHits.every((hit) => hit)
+        : categoryHits.some((hit) => hit)
 
-  const matched =
-    cfg.matchMode === 'all'
-      ? categoryHits.every((hit) => hit)
-      : categoryHits.some((hit) => hit)
+  // A strong tag always qualifies; otherwise fall back to the category logic.
+  const matched = strongReasons.length > 0 || baseMatched
+  if (!matched) return { matched: false, reasons: [] }
 
-  return { matched, reasons: matched ? reasons : [] }
+  const allReasons = [...strongReasons, ...(baseMatched ? reasons : [])]
+  return { matched: true, reasons: allReasons }
 }

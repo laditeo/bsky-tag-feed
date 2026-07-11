@@ -7,6 +7,8 @@ export type MatchMode = 'any' | 'all'
 export interface FilterConfig {
   selfLabels: string[]
   hashtags: string[]
+  /** Self-sufficient drawn-adult tags: match on their own, ignore matchMode. */
+  strongTags: string[]
   keywords: string[]
   languages: string[]
   matchMode: MatchMode
@@ -71,6 +73,7 @@ export const loadConfig = (): Config => {
     selfLabels: parseList('FEED_SELF_LABELS'),
     // Normalize hashtags: strip a leading '#'.
     hashtags: parseList('FEED_HASHTAGS').map((t) => t.replace(/^#/, '')),
+    strongTags: parseList('FEED_STRONG_TAGS').map((t) => t.replace(/^#/, '')),
     keywords: parseList('FEED_KEYWORDS'),
     // Keep only the primary subtag of language codes (e.g. "en-US" -> "en").
     languages: parseList('FEED_LANGUAGES').map((l) => l.split('-')[0]),
@@ -102,9 +105,12 @@ export const loadConfig = (): Config => {
   }
 }
 
-/** True if any firehose-based filter (self-labels/hashtags/keywords) is active. */
+/** True if any firehose-based filter is active. */
 export const hasFirehoseFilters = (f: FilterConfig): boolean =>
-  f.selfLabels.length > 0 || f.hashtags.length > 0 || f.keywords.length > 0
+  f.selfLabels.length > 0 ||
+  f.hashtags.length > 0 ||
+  f.strongTags.length > 0 ||
+  f.keywords.length > 0
 
 /** Summary of the moderation-label source. */
 export const describeLabeler = (l: LabelerConfig): string => {
@@ -115,6 +121,7 @@ export const describeLabeler = (l: LabelerConfig): string => {
 /** Human-readable summary of active filters, and a warning if none are set. */
 export const describeFilter = (f: FilterConfig): string => {
   const parts: string[] = []
+  if (f.strongTags.length) parts.push(`strong-tags=[${f.strongTags.join(', ')}]`)
   if (f.selfLabels.length) parts.push(`self-labels=[${f.selfLabels.join(', ')}]`)
   if (f.hashtags.length) parts.push(`hashtags=[${f.hashtags.join(', ')}]`)
   if (f.keywords.length) parts.push(`keywords=[${f.keywords.join(', ')}]`)
