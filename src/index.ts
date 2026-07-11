@@ -8,6 +8,7 @@ import { createDb, migrateToLatest } from './db'
 import { createServer } from './server'
 import { FirehoseSubscription } from './firehose'
 import { LabelSubscription } from './labeler'
+import { cleanupStalePosts } from './cleanup'
 
 const main = async () => {
   const cfg = loadConfig()
@@ -20,6 +21,7 @@ const main = async () => {
 
   const db = createDb(cfg.databaseUrl, cfg.databaseSsl)
   await migrateToLatest(db)
+  await cleanupStalePosts(db, cfg)
 
   // Start the HTTP feed server.
   const app = createServer(db, cfg)
