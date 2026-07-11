@@ -12,6 +12,16 @@ export interface FilterConfig {
   matchMode: MatchMode
 }
 
+/** Moderation-label source: verdicts published by a labeler service. */
+export interface LabelerConfig {
+  /** WebSocket endpoint of the labeler, e.g. wss://mod.bsky.app */
+  endpoint: string
+  /** DID of the labeler; incoming labels with a different `src` are ignored. */
+  did: string
+  /** Moderation label values to keep, e.g. porn, sexual, nudity, graphic-media. */
+  values: string[]
+}
+
 export interface Config {
   port: number
   listenHost: string
@@ -24,6 +34,7 @@ export interface Config {
   databaseUrl: string
   databaseSsl: boolean
   filter: FilterConfig
+  labeler: LabelerConfig
 }
 
 const req = (name: string): string => {
@@ -66,6 +77,12 @@ export const loadConfig = (): Config => {
     matchMode,
   }
 
+  const labeler: LabelerConfig = {
+    endpoint: opt('FEED_LABELER_ENDPOINT', 'wss://mod.bsky.app'),
+    did: opt('FEED_LABELER_DID', 'did:plc:ar7c4by46qjdydhdevvrndac'),
+    values: parseList('FEED_MOD_LABELS'),
+  }
+
   return {
     port: parseInt(opt('PORT', opt('FEEDGEN_PORT', '3000')), 10),
     listenHost: opt('FEEDGEN_LISTENHOST', '0.0.0.0'),
@@ -81,7 +98,18 @@ export const loadConfig = (): Config => {
     databaseUrl: req('DATABASE_URL'),
     databaseSsl: opt('DATABASE_SSL', 'false').toLowerCase() === 'true',
     filter,
+    labeler,
   }
+}
+
+/** True if any firehose-based filter (self-labels/hashtags/keywords) is active. */
+export const hasFirehoseFilters = (f: FilterConfig): boolean =>
+  f.selfLabels.length > 0 || f.hashtags.length > 0 || f.keywords.length > 0
+
+/** Summary of the moderation-label source. */
+export const describeLabeler = (l: LabelerConfig): string => {
+  if (l.values.length === 0) return 'disabled (no FEED_MOD_LABELS)'
+  return `endpoint=${l.endpoint} src=${l.did} values=[${l.values.join(', ')}]`
 }
 
 /** Human-readable summary of active filters, and a warning if none are set. */
@@ -92,7 +120,7 @@ export const describeFilter = (f: FilterConfig): string => {
   if (f.keywords.length) parts.push(`keywords=[${f.keywords.join(', ')}]`)
   if (f.languages.length) parts.push(`languages=[${f.languages.join(', ')}]`)
   if (parts.length === 0) {
-    return 'NO FILTERS CONFIGURED — the feed will stay empty until you set FEED_SELF_LABELS / FEED_HASHTAGS / FEED_KEYWORDS'
+    return 'disabled (no FEED_SELF_LABELS / FEED_HASHTAGS / FEED_KEYWORDS)'
   }
   return `mode=${f.matchMode} ${parts.join(' ')}`
 }

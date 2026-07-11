@@ -1,12 +1,18 @@
 # Bluesky Tag Feed
 
-A [Bluesky](https://bsky.app) **feed generator** that listens to the full network
-firehose and keeps only the posts that match your rules:
+A [Bluesky](https://bsky.app) **feed generator** that keeps only the posts that
+match your rules, from two independent sources:
 
-- **Self-labels** (content categories set by the author): `porn`, `sexual`, `nudity`, `graphic-media`, … — **priority filter**
+- **Moderation labels** (verdicts from a labeler service, e.g. `mod.bsky.app`):
+  `porn`, `sexual`, `nudity`, `graphic-media`, `gore`, … — **primary source**.
+  These are decisions made by the labeler, *not* the post author.
+- **Self-labels** (content categories set by the author) — via the firehose
 - **Hashtags** — from the `#tag` richtext facets *and* the `tags` field
 - **Keywords** — substring match on the post text
 - **Language** — optional gate (e.g. only `en` / `ru`)
+
+A post is included if it matches the moderation-label rules **or** the
+firehose filters. Each source can be enabled independently.
 
 It is based on the official
 [bluesky-social/feed-generator](https://github.com/bluesky-social/feed-generator)
@@ -16,20 +22,34 @@ runs cleanly on [Railway](https://railway.app) or [Render](https://render.com).
 ## How it works
 
 ```
-Bluesky Firehose ──ws──▶ FirehoseSubscription ──matchPost()──▶ Postgres (post)
-                                                                    │
-Bluesky App ──getFeedSkeleton──▶ Express feed server ◀──────────────┘
+Labeler stream ──ws──▶ LabelSubscription ──by label val──┐
+(mod.bsky.app)                                           ├──▶ Postgres (post)
+Bluesky Firehose ──ws──▶ FirehoseSubscription ──matchPost()──┘        │
+                                                                     │
+Bluesky App ──getFeedSkeleton──▶ Express feed server ◀───────────────┘
 ```
 
-A single Node process does two things at once:
+A single Node process runs up to three things at once:
 
-1. **Firehose consumer** — opens a WebSocket to `wss://bsky.network`, decodes
-   every `app.bsky.feed.post` from the CAR blocks, runs `matchPost()`, and stores
-   matches in Postgres. Progress (cursor) is saved so restarts resume where they
-   left off.
-2. **Feed server (XRPC)** — an Express app exposing the endpoints Bluesky calls:
+1. **Labeler consumer** — opens a WebSocket to the labeler
+   (`com.atproto.label.subscribeLabels`), keeps post labels whose value is in
+   `FEED_MOD_LABELS`, and stores them. A negated label (`neg`) removes the post.
+   Only runs when `FEED_MOD_LABELS` is set.
+2. **Firehose consumer** — opens a WebSocket to `wss://bsky.network`, decodes
+   every `app.bsky.feed.post` from the CAR blocks, runs `matchPost()`
+   (self-labels / hashtags / keywords), and stores matches. Only runs when at
+   least one of those filters is set.
+3. **Feed server (XRPC)** — an Express app exposing the endpoints Bluesky calls:
    `app.bsky.feed.getFeedSkeleton`, `app.bsky.feed.describeFeedGenerator`, and
    `/.well-known/did.json`.
+
+Both consumers save their cursor so restarts resume where they left off.
+
+> **Note on adult content:** on Bluesky, `porn`/`sexual`/`nudity` are usually
+> *self-labeled* by authors; the moderation labeler emits its own verdicts
+> (heavy on `nudity`, plus `gore`, `spam`, `self-harm`, etc.). If you want the
+> broadest adult-content coverage, enable **both** `FEED_MOD_LABELS` and
+> `FEED_SELF_LABELS`.
 
 ## Project layout
 
@@ -82,8 +102,12 @@ curl "http://localhost:3000/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://<PUBLIS
 | `FEED_RECORD_NAME` | no | Feed rkey / short name (default `tag-feed`) |
 | `FEEDGEN_SUBSCRIPTION_ENDPOINT` | no | Firehose relay (default `wss://bsky.network`) |
 | `PORT` | no | HTTP port (Railway/Render set this automatically) |
-| **Filters** | | |
-| `FEED_SELF_LABELS` | – | e.g. `porn,sexual,nudity,graphic-media` |
+| **Moderation labels** | | |
+| `FEED_MOD_LABELS` | – | Label values to keep, e.g. `porn,sexual,nudity,graphic-media`. Empty = labeler off |
+| `FEED_LABELER_ENDPOINT` | no | Labeler WS (default `wss://mod.bsky.app`) |
+| `FEED_LABELER_DID` | no | Labeler DID (default `did:plc:ar7c4by46qjdydhdevvrndac`) |
+| **Firehose filters** | | |
+| `FEED_SELF_LABELS` | – | Author self-labels, e.g. `porn,sexual,nudity,graphic-media` |
 | `FEED_HASHTAGS` | – | e.g. `art,photography` (with or without `#`) |
 | `FEED_KEYWORDS` | – | e.g. `cat,kitten` |
 | `FEED_LANGUAGES` | – | e.g. `en,ru` (empty = any) |
